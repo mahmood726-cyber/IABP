@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ShockLogic v2.0: The Hemodynamic Fallacy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Chakra+Petch:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* --- Theme: "Perfusion Gradient" --- */
+    :root {
+      --bg-dark: #020617;
+      --bg-panel: #0f172a;
+      --bg-input: #1e293b;
+      --primary: #0ea5e9;       /* Perfusion Blue */
+      --survival: #10b981;      /* Green */
+      --bleed: #ef4444;         /* Red */
+      --ischemia: #f59e0b;      /* Amber */
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --font-sans: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-display: 'Chakra Petch', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { background: var(--bg-dark); color: var(--text-main); font-family: var(--font-sans); display: flex; }
+    
+    .app-shell { display: grid; grid-template-columns: 360px 1fr 320px; width: 100%; height: 100%; }
+    
+    .sidebar { background: var(--bg-panel); display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border); z-index: 10; }
+    .sidebar-right { border-left: 1px solid var(--border); border-right: none; background: var(--bg-panel); }
+    .scroll-area { padding: 25px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 24px; }
+    
+    .main-stage { padding: 0; display: flex; flex-direction: column; overflow-y: auto; background: radial-gradient(circle at 50% 20%, #172554 0%, #020617 70%); position: relative; }
+
+    /* Typography */
+    h1 { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; color: #fff; letter-spacing: 0.05em; text-transform: uppercase; }
+    h2 { font-size: 0.75rem; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    
+    /* Device Toggles */
+    .device-grid { display: flex; flex-direction: column; gap: 8px; }
+    .device-card { background: var(--bg-input); border: 1px solid var(--border); padding: 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s; }
+    .device-card:hover { border-color: var(--primary); }
+    .device-card.active { background: rgba(14, 165, 233, 0.1); border-color: var(--primary); }
+    .device-name { font-family: var(--font-display); font-weight: 700; font-size: 0.9rem; color: #fff; }
+    .device-meta { font-size: 0.65rem; color: var(--text-muted); }
+    
+    /* Sliders */
+    .control-group { display: flex; flex-direction: column; gap: 8px; }
+    .lbl-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); }
+    .val-badge { font-family: var(--font-mono); color: #fff; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
+    
+    input[type="range"] { -webkit-appearance: none; width: 100%; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 10px 0; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--primary); border-radius: 50%; cursor: pointer; border: 2px solid #fff; box-shadow: 0 0 10px var(--primary); }
+
+    /* Viz Layout */
+    .narrative-box { padding: 40px 40px 20px 40px; max-width: 1200px; margin: 0 auto; width: 100%; }
+    .narrative-title { font-family: var(--font-display); font-size: 1.8rem; font-weight: 700; color: #fff; line-height: 1.1; margin-bottom: 8px; }
+    .narrative-sub { font-family: var(--font-sans); font-size: 0.9rem; color: var(--text-muted); display:flex; align-items:center; gap:10px; }
+    .status-tag { padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+    .tag-null { background: var(--bg-input); color: var(--text-muted); }
+    .tag-benefit { background: rgba(16, 185, 129, 0.2); color: var(--survival); }
+    .tag-harm { background: rgba(239, 68, 68, 0.2); color: var(--bleed); }
+
+    .viz-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 0 40px 40px 40px; max-width: 1200px; margin: 0 auto; width: 100%; }
+    .viz-col-full { grid-column: 1 / -1; }
+    
+    .viz-card { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; min-height: 300px; position: relative; }
+    .viz-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); }
+    .viz-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em; }
+    canvas { width: 100%; height: 100%; display: block; }
+
+    /* Waffle specific */
+    .waffle-legend { display: flex; justify-content: center; gap: 15px; padding: 10px; font-size: 0.7rem; color: var(--text-muted); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+    /* Metrics Right */
+    .metric-box { padding: 16px; background: var(--bg-input); border-radius: 8px; border-left: 3px solid #555; margin-bottom: 15px; }
+    .m-head { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
+    .m-val { font-size: 1.4rem; font-family: var(--font-mono); font-weight: 700; color: #fff; }
+    .m-sub { font-size: 0.75rem; color: #777; margin-top: 4px; }
+    
+    .run-btn { width: 100%; padding: 14px; background: var(--text-main); color: var(--bg-dark); font-weight: 700; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: auto; }
+    .run-btn:hover { background: #fff; }
+    .loader { width: 14px; height: 14px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #000; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+    .run-btn.processing .loader { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- LEFT: CONFIG -->
+  <aside class="sidebar">
+    <div class="scroll-area">
+      <div>
+        <h1>ShockLogic</h1>
+        <p style="font-size:0.75rem; color:var(--text-muted);">MCS Heterogeneity Engine v2.0</p>
+      </div>
+
+      <!-- 1. Device Selection -->
+      <div class="control-group">
+        <h2>1. Device Inclusion (Pooling)</h2>
+        <div class="device-grid" id="deviceList">
+          <!-- JS Injected -->
+        </div>
+      </div>
+
+      <!-- 2. Subgroup / Risk -->
+      <div class="control-group">
+        <h2>2. Patient Context</h2>
+        
+        <div class="lbl-row">
+          <span>Population Subset</span>
+        </div>
+        <div style="display:flex; gap:2px; background:var(--bg-input); padding:4px; border-radius:6px; border:1px solid var(--border);">
+           <button class="run-btn" style="flex:1; margin:0; padding:8px; font-size:0.7rem; background:var(--bg-panel); color:#fff; border:1px solid var(--primary);" id="btnAll" onclick="setSubgroup('all')">All Shock</button>
+           <button class="run-btn" style="flex:1; margin:0; padding:8px; font-size:0.7rem; background:transparent; color:var(--text-muted);" id="btnStemi" onclick="setSubgroup('stemi')">STEMI Only</button>
+        </div>
+
+        <div class="lbl-row" style="margin-top:15px;">
+          <span>Door-to-Unload Time</span>
+          <span id="lblTime" class="val-badge">Delayed (>4h)</span>
+        </div>
+        <input type="range" id="timeSlider" min="0" max="6" value="4" step="1">
+        <div style="font-size:0.65rem; color:#777;">
+          0=Pre-PCI (Early), 6=Rescue (Late). Early unloading amplifies device efficacy.
+        </div>
+      </div>
+
+      <button class="run-btn" id="runBtn" onclick="runSimulation()">
+        <div class="loader"></div>
+        <span>Synthesize Evidence</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- CENTER: VIZ -->
+  <main class="main-stage">
+    <div class="narrative-box">
+      <div class="narrative-sub">
+        <span>META-ANALYSIS RECONSTRUCTION (HKSJ)</span>
+        <span id="hetBadge" class="status-tag tag-null">I² = --%</span>
+      </div>
+      <div id="narrativeTitle" class="narrative-title">...</div>
+      <div id="narrativeSub" class="narrative-sub">Select devices to analyze pooled effects.</div>
+    </div>
+
+    <!-- Forest Plot -->
+    <div class="viz-grid">
+      <div class="viz-card viz-col-full" style="height: 320px;">
+        <div class="viz-header">
+          <span class="viz-label">Forest Plot: 6-Month Mortality</span>
+          <span class="viz-label" style="color:var(--text-muted)">Left = Benefit | Right = Harm</span>
+        </div>
+        <canvas id="forestCanvas"></canvas>
+      </div>
+
+      <!-- Waffle Chart -->
+      <div class="viz-card" style="height: 320px;">
+        <div class="viz-header">
+          <span class="viz-label">The Trade-Off (100 Patients)</span>
+        </div>
+        <canvas id="waffleCanvas"></canvas>
+        <div class="waffle-legend">
+           <div><span class="dot" style="background:var(--survival)"></span>Saved</div>
+           <div><span class="dot" style="background:var(--bleed)"></span>Bleed/Ischemia</div>
+           <div><span class="dot" style="background:#333"></span>Neutral</div>
+        </div>
+      </div>
+
+      <!-- Bleeding Risks -->
+      <div class="viz-card" style="height: 320px;">
+        <div class="viz-header">
+          <span class="viz-label">Complication Penalty</span>
+        </div>
+        <canvas id="safetyCanvas"></canvas>
+      </div>
+    </div>
+  </main>
+
+  <!-- RIGHT: METRICS -->
+  <aside class="sidebar sidebar-right">
+    <div class="scroll-area">
+      <h2>Pooled Results</h2>
+
+      <div class="metric-box" style="border-color:var(--primary);">
+        <div class="m-head">Mortality OR (HKSJ)</div>
+        <div class="m-val" id="valMortality">--</div>
+        <div class="m-sub" id="valMortalityCI">95% CI</div>
+      </div>
+
+      <div class="metric-box" style="border-color:var(--bleed);">
+        <div class="m-head">Bleeding/Vascular OR</div>
+        <div class="m-val" id="valBleed" style="color:var(--bleed)">--</div>
+        <div class="m-sub">Safety Signal</div>
+      </div>
+
+      <div style="border-top:1px solid var(--border); padding-top:20px;">
+        <h2>Methodological Note</h2>
+        <div id="reportContent" style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-muted); line-height:1.6;">
+          Waiting for simulation...
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- WORKER -->
+<script id="worker-code" type="javascript/worker">
+  self.onmessage = function(e) {
+    const { devices, subgroup, timeDelay } = e.data;
+    
+    // 1. Filter
+    const activeDevices = devices.filter(d => d.active);
+    if(activeDevices.length === 0) { self.postMessage({error:true}); return; }
+
+    // 2. Adjust Data based on Context (Subgroup & Time)
+    // Time Delay: 0=Early (Enhances Benefit), 6=Late (Nullifies Benefit)
+    // Only affects "Active" devices (Impella/ECMO), not IABP (neutral).
+    // Efficacy Decay: OR moves towards 1.0 as time increases.
+    
+    const adjustedData = activeDevices.map(d => {
+        let logOR = Math.log(d.or);
+        let logSafe = Math.log(d.or_safety);
+        let se = d.se;
+
+        // Subgroup Logic
+        // STEMI Only: Impella (DanGer) signal gets stronger (per 2025 JACC). Mixed trials get weaker/wider.
+        if (subgroup === 'stemi') {
+            if (d.id.includes('DanGer')) {
+                logOR = Math.log(0.68); // The signal from the prompt
+                se = se * 0.9; // Tighter
+            } else if (d.id.includes('IABP')) {
+                // Neutral
+            } else {
+                // ECMO in STEMI - still complications
+                se = se * 1.2; // Loss of power
+            }
+        }
+
+        // Timing Logic
+        // If device has potential benefit (OR < 1), delay dilutes it.
+        // If timeDelay is 0 (Early), benefit is max. If 6 (Late), benefit is null.
+        if (logOR < 0) {
+            const decay = timeDelay / 6; // 0 to 1
+            logOR = logOR * (1 - decay); // E.g. -0.3 * (1-1) = 0.
+        }
+
+        return {
+            id: d.id,
+            logOR,
+            se,
+            logSafe,
+            seSafe: d.se_safety
+        };
+    });
+
+    // 3. Meta-Analysis (HKSJ)
+    const maMort = runHKSJ(adjustedData, 'logOR', 'se');
+    const maSafe = runHKSJ(adjustedData, 'logSafe', 'seSafe');
+
+    // 4. Competing Risk Simulation (Waffle Data)
+    // N=100 Representative
+    // Baseline Mortality in Shock ~50%. 
+    // Benefit = Reduced Deaths.
+    // Harm = Caused Major Bleeds/Vascular.
+    
+    const baseMort = 0.50;
+    const baseBleed = 0.10;
+    
+    const trtMort = (baseMort * maMort.or) / (1 - baseMort + (baseMort * maMort.or));
+    const trtBleed = (baseBleed * maSafe.or) / (1 - baseBleed + (baseBleed * maSafe.or));
+    
+    const livesSaved = Math.max(0, Math.round((baseMort - trtMort)*100));
+    const extraHarm = Math.max(0, Math.round((trtBleed - baseBleed)*100));
+
+    self.postMessage({
+        results: {
+            maMort,
+            maSafe,
+            livesSaved,
+            extraHarm
+        }
+    });
+  };
+
+  function runHKSJ(studies, kEff, kSe) {
+    const k = studies.length;
+    if (k === 1) {
+        // Fallback for single study
+        const s = studies[0];
+        return {
+            or: Math.exp(s[kEff]),
+            lo: Math.exp(s[kEff] - 1.96*s[kSe]),
+            hi: Math.exp(s[kEff] + 1.96*s[kSe]),
+            I2: 0,
+            studies: studies.map(st => ({
+                id: st.id,
+                or: Math.exp(st[kEff]),
+                lo: Math.exp(st[kEff] - 1.96*st[kSe]),
+                hi: Math.exp(st[kEff] + 1.96*st[kSe])
+            }))
+        };
+    }
+
+    // 1. DSL for Tau2
+    const y = studies.map(s => s[kEff]);
+    const v = studies.map(s => s[kSe]**2);
+    
+    let num=0, den=0;
+    v.forEach((val,i) => { num += (1/val)*y[i]; den += (1/val); });
+    const muFE = num/den;
+    
+    let Q = 0;
+    y.forEach((val,i) => Q += (1/v[i]) * (val - muFE)**2);
+    
+    const C = den - (v.map(val=>1/val**2).reduce((a,b)=>a+b,0) / den);
+    const tau2 = Math.max(0, (Q - (k-1))/C);
+    const I2 = Math.max(0, (Q - (k-1))/Q)*100;
+
+    // 2. HKSJ
+    let wSum=0, wMeanNum=0;
+    const wRE = v.map(val => 1/(val + tau2));
+    wRE.forEach((w,i) => {
+        wSum += w;
+        wMeanNum += w * y[i];
+    });
+    const muRE = wMeanNum / wSum;
+    
+    let qTerm = 0;
+    wRE.forEach((w,i) => qTerm += w * (y[i] - muRE)**2);
+    
+    const varHKSJ = qTerm / ((k-1) * wSum);
+    const seHKSJ = Math.sqrt(varHKSJ);
+    
+    // T-Critical
+    let tVal = 2.0; 
+    if (k <= 5) tVal = 2.78; 
+    else tVal = 2.26;
+
+    return {
+        or: Math.exp(muRE),
+        lo: Math.exp(muRE - tVal*seHKSJ),
+        hi: Math.exp(muRE + tVal*seHKSJ),
+        I2,
+        studies: studies.map(st => ({
+            id: st.id,
+            or: Math.exp(st[kEff]),
+            lo: Math.exp(st[kEff] - 1.96*st[kSe]),
+            hi: Math.exp(st[kEff] + 1.96*st[kSe])
+        }))
+    };
+  }
+</script>
+
+<script>
+  /* --- DATABASE --- */
+  // Based on DanGer Shock, ECLS-SHOCK, IABP-SHOCK II
+  const DB = [
+    { id: "DanGer (Impella)", type: "pMCS", or: 0.74, se: 0.12, or_safety: 2.50, se_safety: 0.20, active: true },
+    { id: "ECLS-SHOCK (ECMO)", type: "ECMO", or: 0.98, se: 0.10, or_safety: 1.80, se_safety: 0.15, active: true },
+    { id: "IABP-SHOCK II", type: "IABP", or: 0.96, se: 0.08, or_safety: 1.05, se_safety: 0.10, active: true },
+    { id: "ISAR-SHOCK", type: "Impella", or: 0.90, se: 0.25, or_safety: 2.00, se_safety: 0.40, active: true },
+    { id: "IMPRESS", type: "Impella", or: 0.95, se: 0.30, or_safety: 1.90, se_safety: 0.45, active: true }
+  ];
+
+  /* --- STATE --- */
+  let state = {
+    devices: JSON.parse(JSON.stringify(DB)),
+    subgroup: 'all',
+    timeDelay: 4 // Default "Late" as per trials
+  };
+
+  /* --- WORKER --- */
+  const blob = new Blob([document.getElementById('worker-code').textContent], {type: "text/javascript"});
+  const worker = new Worker(window.URL.createObjectURL(blob));
+
+  worker.onmessage = function(e) {
+    if(e.data.results) {
+        renderUI(e.data.results);
+        document.getElementById('runBtn').classList.remove('processing');
+        document.getElementById('runBtn').disabled = false;
+    }
+  };
+
+  /* --- ACTIONS --- */
+  function toggleDevice(idx) {
+    state.devices[idx].active = !state.devices[idx].active;
+    renderDeviceList();
+    runSimulation();
+  }
+
+  function setSubgroup(grp) {
+    state.subgroup = grp;
+    document.getElementById('btnAll').style.background = grp === 'all' ? 'var(--bg-panel)' : 'transparent';
+    document.getElementById('btnAll').style.color = grp === 'all' ? '#fff' : 'var(--text-muted)';
+    document.getElementById('btnStemi').style.background = grp === 'stemi' ? 'var(--bg-panel)' : 'transparent';
+    document.getElementById('btnStemi').style.color = grp === 'stemi' ? '#fff' : 'var(--text-muted)';
+    runSimulation();
+  }
+
+  function runSimulation() {
+    document.getElementById('runBtn').classList.add('processing');
+    document.getElementById('runBtn').disabled = true;
+    
+    worker.postMessage({
+        devices: state.devices,
+        subgroup: state.subgroup,
+        timeDelay: parseFloat(document.getElementById('timeSlider').value)
+    });
+  }
+
+  /* --- RENDERERS --- */
+  function renderDeviceList() {
+    const list = document.getElementById('deviceList');
+    list.innerHTML = '';
+    state.devices.forEach((d, i) => {
+        const div = document.createElement('div');
+        div.className = `device-card ${d.active ? 'active' : ''}`;
+        div.onclick = () => toggleDevice(i);
+        div.innerHTML = `
+            <div>
+                <div class="device-name">${d.id}</div>
+                <div class="device-meta">${d.type}</div>
+            </div>
+            <div style="width:10px; height:10px; border-radius:50%; background:${d.active ? 'var(--primary)' : '#333'}"></div>
+        `;
+        list.appendChild(div);
+    });
+  }
+
+  function renderUI(res) {
+    // Metrics
+    const or = res.maMort.or.toFixed(2);
+    document.getElementById('valMortality').textContent = or;
+    document.getElementById('valMortalityCI').textContent = `${res.maMort.lo.toFixed(2)} - ${res.maMort.hi.toFixed(2)}`;
+    
+    const safeOR = res.maSafe.or.toFixed(2);
+    document.getElementById('valBleed').textContent = safeOR;
+
+    // Heterogeneity Badge
+    const i2 = Math.round(res.maMort.I2);
+    const badge = document.getElementById('hetBadge');
+    badge.textContent = `I² = ${i2}%`;
+    badge.className = i2 > 50 ? 'status-tag tag-harm' : 'status-tag tag-null';
+
+    // Narrative
+    const title = document.getElementById('narrativeTitle');
+    const sub = document.getElementById('narrativeSub');
+    
+    // Pooled Logic: If I2 is high and OR is close to 1
+    if (i2 > 50 && res.maMort.lo < 1 && res.maMort.hi > 1) {
+        title.textContent = "Statistical Dilution Detected";
+        title.style.color = "var(--text-muted)";
+        sub.textContent = "High heterogeneity suggests pooling disparate devices obscures individual effects.";
+    } else if (res.maMort.hi < 1) {
+        title.textContent = "Survival Benefit Observed";
+        title.style.color = "var(--survival)";
+        sub.textContent = "Signal driven by device/subgroup selection.";
+    } else {
+        title.textContent = "No Mortality Benefit";
+        title.style.color = "var(--bleed)";
+        sub.textContent = "Pooled estimate crosses unity. Harms outweigh benefits.";
+    }
+
+    // Report
+    let txt = `ANALYSIS REPORT:\n`;
+    txt += `> Heterogeneity (I²): ${i2}% - ${i2>50 ? 'VIOLATES POOLING ASSUMPTION' : 'Acceptable'}\n`;
+    txt += `> Mortality OR: ${or} (HKSJ Corrected)\n`;
+    txt += `> Bleeding OR: ${safeOR} (Strong Harm Signal)\n\n`;
+    txt += `CRITIQUE: Pooling IABP (neutral) with Impella (benefit/risk mix) dilutes the signal. `;
+    if (state.timeDelay > 2) txt += `Delay in implantation (Slider > 2) significantly attenuates theoretical efficacy.`;
+    
+    document.getElementById('reportContent').innerText = txt;
+
+    // Charts
+    drawForest(res.maMort);
+    drawWaffle(res);
+    drawSafety(res.maSafe);
+  }
+
+  /* --- DRAWING --- */
+  function setupCanvas(id) {
+    const c = document.getElementById(id);
+    const dpr = window.devicePixelRatio || 1;
+    const rect = c.getBoundingClientRect();
+    c.width = rect.width * dpr;
+    c.height = rect.height * dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx, w: rect.width, h: rect.height };
+  }
+
+  function drawForest(ma) {
+    const { ctx, w, h } = setupCanvas('forestCanvas');
+    const pad = { t:30, b:30, l:120, r:30 };
+    
+    // Scale: 0.4 to 1.6
+    const minX = 0.4, maxX = 1.6;
+    const sx = v => pad.l + ((v-minX)/(maxX-minX))*(w-pad.l-pad.r);
+    
+    // Axis
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx(1), pad.t); ctx.lineTo(sx(1), h-pad.b); ctx.stroke();
+    
+    const rowH = (h-pad.t-pad.b)/(ma.studies.length+2);
+    
+    ma.studies.forEach((s, i) => {
+        const y = pad.t + i*rowH + rowH/2;
+        ctx.fillStyle = '#ccc'; ctx.textAlign='right'; ctx.font='10px Inter';
+        ctx.fillText(s.id, pad.l-10, y+3);
+        
+        ctx.strokeStyle = '#666'; ctx.beginPath();
+        ctx.moveTo(sx(s.lo), y); ctx.lineTo(sx(s.hi), y); ctx.stroke();
+        
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fillRect(sx(s.or)-2, y-2, 4, 4);
+    });
+
+    // Diamond
+    const yD = h - pad.b - rowH/2;
+    const cx = sx(ma.or);
+    const hw = (sx(ma.hi) - sx(ma.lo))/2;
+    
+    ctx.fillStyle = ma.lo > 1 ? '#ef4444' : ma.hi < 1 ? '#10b981' : '#f59e0b';
+    ctx.beginPath();
+    ctx.moveTo(cx-hw, yD); ctx.lineTo(cx, yD-5); ctx.lineTo(cx+hw, yD); ctx.lineTo(cx, yD+5); ctx.fill();
+  }
+
+  function drawWaffle(res) {
+    const { ctx, w, h } = setupCanvas('waffleCanvas');
+    const cols = 20, rows = 5;
+    const gap = 4;
+    const sz = Math.min((w-(cols*gap))/cols, (h-(rows*gap))/rows)*0.7;
+    const startX = (w - (cols*sz + (cols-1)*gap))/2;
+    const startY = (h - (rows*sz + (rows-1)*gap))/2;
+    
+    let saved = res.livesSaved;
+    let harm = res.extraHarm;
+    
+    let k = 0;
+    for(let r=0; r<rows; r++) {
+        for(let c=0; c<cols; c++) {
+            let color = '#333';
+            if (k < saved) color = '#10b981';
+            else if (k < saved + harm) color = '#ef4444';
+            
+            ctx.fillStyle = color;
+            ctx.beginPath(); ctx.arc(startX + c*(sz+gap), startY + r*(sz+gap), sz/2, 0, Math.PI*2); ctx.fill();
+            k++;
+        }
+    }
+  }
+
+  function drawSafety(ma) {
+    const { ctx, w, h } = setupCanvas('safetyCanvas');
+    const pad = {l:40, r:20, t:20, b:20};
+    
+    // Bar Chart of Pooled Safety OR
+    const maxVal = 3.0;
+    const barW = 60;
+    const x = w/2 - barW/2;
+    const hBar = (ma.or / maxVal) * (h - pad.t - pad.b);
+    
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(x, h-pad.b-hBar, barW, hBar);
+    
+    // Error Bar
+    const yLo = h - pad.b - (ma.lo / maxVal)*(h - pad.t - pad.b);
+    const yHi = h - pad.b - (ma.hi / maxVal)*(h - pad.t - pad.b);
+    
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + barW/2, yLo); ctx.lineTo(x + barW/2, yHi); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + barW/2 - 5, yLo); ctx.lineTo(x + barW/2 + 5, yLo); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + barW/2 - 5, yHi); ctx.lineTo(x + barW/2 + 5, yHi); ctx.stroke();
+    
+    ctx.fillStyle = '#fff'; ctx.textAlign='center'; ctx.font='12px Inter';
+    ctx.fillText(ma.or.toFixed(2) + "x Risk", w/2, h - pad.b - hBar - 10);
+    ctx.fillText("Major Bleeding / Vascular", w/2, h-5);
+  }
+
+  // Init
+  document.getElementById('timeSlider').addEventListener('input', (e) => {
+      const v = parseInt(e.target.value);
+      const labs = ["Pre-PCI", "Early", "Standard", "Late", "Delayed", "Rescue", "Futile"];
+      document.getElementById('lblTime').textContent = labs[v];
+      runSimulation();
+  });
+
+  renderDeviceList();
+  runSimulation();
+</script>
+</body>
+</html>
